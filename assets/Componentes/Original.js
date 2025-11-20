@@ -1,339 +1,125 @@
-import React, { useState, useEffect } from 'react';
-import {
-  View,
-  Text,
-  StyleSheet,
-  TouchableOpacity,
-  ActivityIndicator,
-  Alert,
-  ScrollView,
-  Animated,
-} from 'react-native';
-import { doc, getDoc, setDoc, updateDoc } from 'firebase/firestore';
-import { db, auth } from '../firebase/firebaseConfig';
-import { onAuthStateChanged } from 'firebase/auth';
+import React, { useState, useEffect } from "react";
+import { View, Text, TouchableOpacity, StyleSheet, ActivityIndicator } from "react-native";
+import { auth, db } from "../firebase/firebaseConfig";
+import { doc, getDoc, updateDoc } from "firebase/firestore";
 
-export default function GameScreen() {
-  const [rockets, setRockets] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [gameStarted, setGameStarted] = useState(false);
-  const [currentQuestion, setCurrentQuestion] = useState(0);
-  const [score, setScore] = useState(0);
-  const [questions, setQuestions] = useState([]);
-  const [selectedAnswer, setSelectedAnswer] = useState(null);
-  const [showResult, setShowResult] = useState(false);
-  const [gameFinished, setGameFinished] = useState(false);
-  const { user } = useAuth();
-  const [scaleAnim] = useState(new Animated.Value(1));
+const preguntas = [
+  {
+    pregunta: "¿Cuál es el cohete más poderoso de SpaceX?",
+    opciones: ["Falcon 9", "Starship", "Falcon Heavy", "Dragon"],
+    correcta: 1
+  },
+  {
+    pregunta: "¿Quién es el fundador de SpaceX?",
+    opciones: ["Jeff Bezos", "Bill Gates", "Elon Musk", "Tony Stark"],
+    correcta: 2
+  },
+  {
+    pregunta: "¿En qué año se fundó SpaceX?",
+    opciones: ["1999", "2002", "2010", "2015"],
+    correcta: 1
+  }
+];
 
-  useEffect(() => {
-    loadRockets();
-  }, []);
+export default function Trivia() {
+  const [index, setIndex] = useState(0);
+  const [seleccion, setSeleccion] = useState(null);
+  const [puntaje, setPuntaje] = useState(0);
+  const [resultado, setResultado] = useState(null);
+  const [guardando, setGuardando] = useState(false);
 
-  const loadRockets = async () => {
-    const result = await spacexApi.getRockets();
-    if (result.success) {
-      setRockets(result.data);
-      generateQuestions(result.data);
-    }
-    setLoading(false);
-  };
+  const usuario = auth.currentUser;
 
-  const generateQuestions = (rocketsData) => {
-    const questionTypes = [
-      {
-        type: 'height',
-        question: (rocket) => `¿Cuál es la altura del cohete ${rocket.name}?`,
-        getAnswer: (rocket) => `${rocket.height.meters} metros`,
-        getValue: (rocket) => rocket.height.meters,
-      },
-      {
-        type: 'engines',
-        question: (rocket) => `¿Cuántos motores tiene el ${rocket.name}?`,
-        getAnswer: (rocket) => `${rocket.engines.number} motores`,
-        getValue: (rocket) => rocket.engines.number,
-      },
-      {
-        type: 'country',
-        question: (rocket) => `¿De qué país es el cohete ${rocket.name}?`,
-        getAnswer: (rocket) => rocket.country,
-        getValue: (rocket) => rocket.country,
-      },
-      {
-        type: 'cost',
-        question: (rocket) => `¿Cuál es el costo aproximado de lanzamiento del ${rocket.name}?`,
-        getAnswer: (rocket) => `$${(rocket.cost_per_launch / 1000000).toFixed(0)} millones`,
-        getValue: (rocket) => rocket.cost_per_launch,
-      },
-      {
-        type: 'success',
-        question: (rocket) => `¿Cuál es la tasa de éxito del ${rocket.name}?`,
-        getAnswer: (rocket) => `${rocket.success_rate_pct}%`,
-        getValue: (rocket) => rocket.success_rate_pct,
-      },
-    ];
+  const responder = (i) => {
+    setSeleccion(i);
 
-    const newQuestions = [];
-    const usedRockets = new Set();
-
-    while (newQuestions.length < 10 && usedRockets.size < rocketsData.length) {
-      const rocket = rocketsData[Math.floor(Math.random() * rocketsData.length)];
-      
-      if (!usedRockets.has(rocket.id)) {
-        const questionType = questionTypes[Math.floor(Math.random() * questionTypes.length)];
-        
-        // Generar opciones incorrectas
-        const correctAnswer = questionType.getAnswer(rocket);
-        const options = [correctAnswer];
-        
-        // Crear 3 opciones incorrectas
-        while (options.length < 4) {
-          const randomRocket = rocketsData[Math.floor(Math.random() * rocketsData.length)];
-          const wrongAnswer = questionType.getAnswer(randomRocket);
-          
-          if (!options.includes(wrongAnswer)) {
-            options.push(wrongAnswer);
-          }
-        }
-        
-        // Mezclar opciones
-        const shuffledOptions = options.sort(() => Math.random() - 0.5);
-        
-        newQuestions.push({
-          question: questionType.question(rocket),
-          options: shuffledOptions,
-          correctAnswer: correctAnswer,
-          rocket: rocket.name,
-        });
-        
-        usedRockets.add(rocket.id);
-      }
-    }
-
-    setQuestions(newQuestions);
-  };
-
-  const startGame = () => {
-    setGameStarted(true);
-    setCurrentQuestion(0);
-    setScore(0);
-    setGameFinished(false);
-    setShowResult(false);
-    setSelectedAnswer(null);
-    generateQuestions(rockets);
-  };
-
-  const handleAnswer = (answer) => {
-    if (showResult) return;
-
-    setSelectedAnswer(answer);
-    setShowResult(true);
-
-    const isCorrect = answer === questions[currentQuestion].correctAnswer;
-    
-    if (isCorrect) {
-      setScore(score + 10);
-      Animated.sequence([
-        Animated.timing(scaleAnim, {
-          toValue: 1.2,
-          duration: 200,
-          useNativeDriver: true,
-        }),
-        Animated.timing(scaleAnim, {
-          toValue: 1,
-          duration: 200,
-          useNativeDriver: true,
-        }),
-      ]).start();
-    }
-  };
-
-  const nextQuestion = () => {
-    if (currentQuestion + 1 < questions.length) {
-      setCurrentQuestion(currentQuestion + 1);
-      setSelectedAnswer(null);
-      setShowResult(false);
+    if (i === preguntas[index].correcta) {
+      setPuntaje(puntaje + 1);
+      setResultado("correcto");
     } else {
-      finishGame();
+      setResultado("incorrecto");
     }
+
+    setTimeout(() => {
+      setSeleccion(null);
+      setResultado(null);
+      if (index + 1 < preguntas.length) {
+        setIndex(index + 1);
+      } else {
+        guardarResultado();
+      }
+    }, 900);
   };
 
-  const finishGame = async () => {
-    setGameFinished(true);
-    
-    // Guardar puntuación en Firebase
+  const guardarResultado = async () => {
+    setGuardando(true);
+
     try {
-      await addDoc(collection(db, 'scores'), {
-        userId: user.uid,
-        userEmail: user.email,
-        score: score + 10, // +10 por la última respuesta correcta
-        date: new Date().toISOString(),
-        totalQuestions: questions.length,
-      });
-    } catch (error) {
-      console.error('Error al guardar puntuación:', error);
+      const ref = doc(db, "usuarios", usuario.uid);
+      const snap = await getDoc(ref);
+
+      if (snap.exists()) {
+        const data = snap.data();
+
+        await updateDoc(ref, {
+          ganados: puntaje === preguntas.length ? data.ganados + 1 : data.ganados,
+          perdidos: puntaje !== preguntas.length ? data.perdidos + 1 : data.perdidos,
+        });
+      }
+    } catch (e) {
+      console.log("Error guardando:", e);
     }
+
+    setGuardando(false);
+    setResultado("fin");
   };
 
-  if (loading) {
+  if (guardando) {
     return (
-      <View style={styles.centerContainer}>
-        <ActivityIndicator size="large" color="#005288" />
-        <Text style={styles.loadingText}>Preparando el juego...</Text>
+      <View style={styles.center}>
+        <ActivityIndicator size="large" color="#0A84FF" />
+        <Text style={{ color: "#fff", marginTop: 10 }}>Guardando resultados...</Text>
       </View>
     );
   }
 
-  if (!gameStarted) {
+  if (resultado === "fin") {
     return (
-      <ScrollView style={styles.container}>
-        <View style={styles.welcomeContainer}>
-          <Ionicons name="game-controller" size={100} color="#005288" />
-          <Text style={styles.welcomeTitle}>Rocket Quiz</Text>
-          <Text style={styles.welcomeSubtitle}>
-            Pon a prueba tus conocimientos sobre los cohetes de SpaceX
-          </Text>
+      <View style={styles.center}>
+        <Text style={styles.finTitulo}>¡Trivia Finalizada!</Text>
 
-          <View style={styles.rulesContainer}>
-            <Text style={styles.rulesTitle}>Cómo jugar:</Text>
-            <View style={styles.ruleItem}>
-              <Ionicons name="checkmark-circle" size={24} color="#4CAF50" />
-              <Text style={styles.ruleText}>10 preguntas sobre cohetes SpaceX</Text>
-            </View>
-            <View style={styles.ruleItem}>
-              <Ionicons name="trophy" size={24} color="#FFD700" />
-              <Text style={styles.ruleText}>10 puntos por respuesta correcta</Text>
-            </View>
-            <View style={styles.ruleItem}>
-              <Ionicons name="time" size={24} color="#FF6B35" />
-              <Text style={styles.ruleText}>Sin límite de tiempo</Text>
-            </View>
-          </View>
-
-          <TouchableOpacity style={styles.startButton} onPress={startGame}>
-            <Text style={styles.startButtonText}>Comenzar Juego</Text>
-            <Ionicons name="play" size={24} color="#fff" />
-          </TouchableOpacity>
-        </View>
-      </ScrollView>
-    );
-  }
-
-  if (gameFinished) {
-    const finalScore = score;
-    const percentage = (finalScore / (questions.length * 10)) * 100;
-    
-    return (
-      <View style={styles.resultContainer}>
-        <Ionicons name="trophy" size={100} color="#FFD700" />
-        <Text style={styles.resultTitle}>¡Juego Terminado!</Text>
-        
-        <Animated.View style={[styles.scoreBox, { transform: [{ scale: scaleAnim }] }]}>
-          <Text style={styles.finalScore}>{finalScore}</Text>
-          <Text style={styles.scoreLabel}>puntos</Text>
-        </Animated.View>
-
-        <View style={styles.statsContainer}>
-          <View style={styles.statItem}>
-            <Text style={styles.statValue}>{questions.length}</Text>
-            <Text style={styles.statLabel}>Preguntas</Text>
-          </View>
-          <View style={styles.statItem}>
-            <Text style={styles.statValue}>{Math.round(percentage)}%</Text>
-            <Text style={styles.statLabel}>Precisión</Text>
-          </View>
-        </View>
-
-        <Text style={styles.resultMessage}>
-          {percentage >= 80 ? '¡Excelente! Eres un experto en cohetes 🚀' :
-           percentage >= 60 ? '¡Buen trabajo! Conoces bien los cohetes 👍' :
-           percentage >= 40 ? 'No está mal, pero puedes mejorar 📚' :
-           '¡Sigue aprendiendo sobre cohetes! 💪'}
+        <Text style={styles.finTexto}>
+          Aciertos: {puntaje} / {preguntas.length}
         </Text>
 
-        <TouchableOpacity style={styles.playAgainButton} onPress={startGame}>
-          <Ionicons name="refresh" size={24} color="#fff" />
-          <Text style={styles.playAgainText}>Jugar de Nuevo</Text>
-        </TouchableOpacity>
+        <Text style={styles.finTexto}>
+          {puntaje === preguntas.length ? "¡Perfecto! +1 victoria" : "Fallaste. +1 derrota"}
+        </Text>
       </View>
     );
   }
-
-  const currentQ = questions[currentQuestion];
 
   return (
     <View style={styles.container}>
-      <View style={styles.header}>
-        <View style={styles.progressContainer}>
-          <Text style={styles.questionNumber}>
-            Pregunta {currentQuestion + 1} de {questions.length}
-          </Text>
-          <View style={styles.progressBar}>
-            <View 
-              style={[
-                styles.progressFill, 
-                { width: `${((currentQuestion + 1) / questions.length) * 100}%` }
-              ]} 
-            />
-          </View>
-        </View>
-        <Animated.View style={{ transform: [{ scale: scaleAnim }] }}>
-          <Text style={styles.scoreText}>Puntos: {score}</Text>
-        </Animated.View>
-      </View>
+      <Text style={styles.pregunta}>{preguntas[index].pregunta}</Text>
 
-      <ScrollView style={styles.questionContainer}>
-        <View style={styles.rocketBadge}>
-          <Ionicons name="rocket" size={40} color="#005288" />
-          <Text style={styles.rocketName}>{currentQ.rocket}</Text>
-        </View>
+      {preguntas[index].opciones.map((op, i) => (
+        <TouchableOpacity
+          key={i}
+          onPress={() => responder(i)}
+          style={[
+            styles.opcion,
+            seleccion === i && resultado === "correcto" && styles.correcta,
+            seleccion === i && resultado === "incorrecto" && styles.incorrecta,
+          ]}
+        >
+          <Text style={styles.opcionTexto}>{op}</Text>
+        </TouchableOpacity>
+      ))}
 
-        <Text style={styles.questionText}>{currentQ.question}</Text>
-
-        <View style={styles.optionsContainer}>
-          {currentQ.options.map((option, index) => {
-            const isSelected = selectedAnswer === option;
-            const isCorrect = option === currentQ.correctAnswer;
-            const showCorrect = showResult && isCorrect;
-            const showWrong = showResult && isSelected && !isCorrect;
-
-            return (
-              <TouchableOpacity
-                key={index}
-                style={[
-                  styles.optionButton,
-                  showCorrect && styles.correctOption,
-                  showWrong && styles.wrongOption,
-                ]}
-                onPress={() => handleAnswer(option)}
-                disabled={showResult}
-              >
-                <Text style={[
-                  styles.optionText,
-                  (showCorrect || showWrong) && styles.optionTextSelected,
-                ]}>
-                  {option}
-                </Text>
-                {showCorrect && (
-                  <Ionicons name="checkmark-circle" size={24} color="#fff" />
-                )}
-                {showWrong && (
-                  <Ionicons name="close-circle" size={24} color="#fff" />
-                )}
-              </TouchableOpacity>
-            );
-          })}
-        </View>
-
-        {showResult && (
-          <TouchableOpacity style={styles.nextButton} onPress={nextQuestion}>
-            <Text style={styles.nextButtonText}>
-              {currentQuestion + 1 < questions.length ? 'Siguiente Pregunta' : 'Ver Resultados'}
-            </Text>
-            <Ionicons name="arrow-forward" size={24} color="#fff" />
-          </TouchableOpacity>
-        )}
-      </ScrollView>
+      <Text style={styles.progreso}>
+        Pregunta {index + 1} de {preguntas.length}
+      </Text>
     </View>
   );
 }
@@ -341,255 +127,55 @@ export default function GameScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#f5f5f5',
-  },
-  centerContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  loadingText: {
-    marginTop: 10,
-    fontSize: 16,
-    color: '#666',
-  },
-  welcomeContainer: {
-    flex: 1,
-    alignItems: 'center',
+    backgroundColor: "#0D0D0D",
     padding: 20,
-    paddingTop: 60,
+    justifyContent: "center",
   },
-  welcomeTitle: {
-    fontSize: 32,
-    fontWeight: 'bold',
-    color: '#005288',
-    marginTop: 20,
-  },
-  welcomeSubtitle: {
-    fontSize: 16,
-    color: '#666',
-    textAlign: 'center',
-    marginTop: 10,
-    paddingHorizontal: 20,
-  },
-  rulesContainer: {
-    backgroundColor: '#fff',
-    borderRadius: 12,
-    padding: 20,
-    marginTop: 40,
-    width: '100%',
-  },
-  rulesTitle: {
-    fontSize: 20,
-    fontWeight: 'bold',
-    color: '#333',
-    marginBottom: 15,
-  },
-  ruleItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 15,
-  },
-  ruleText: {
-    fontSize: 16,
-    color: '#666',
-    marginLeft: 15,
-    flex: 1,
-  },
-  startButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#005288',
-    borderRadius: 12,
-    padding: 18,
-    marginTop: 30,
-    width: '100%',
-    justifyContent: 'center',
-  },
-  startButtonText: {
-    color: '#fff',
-    fontSize: 20,
-    fontWeight: 'bold',
-    marginRight: 10,
-  },
-  header: {
-    backgroundColor: '#fff',
-    padding: 20,
-    paddingTop: 10,
-  },
-  progressContainer: {
-    marginBottom: 15,
-  },
-  questionNumber: {
-    fontSize: 14,
-    color: '#666',
-    marginBottom: 8,
-  },
-  progressBar: {
-    height: 8,
-    backgroundColor: '#e0e0e0',
-    borderRadius: 4,
-    overflow: 'hidden',
-  },
-  progressFill: {
-    height: '100%',
-    backgroundColor: '#005288',
-  },
-  scoreText: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    color: '#005288',
-    textAlign: 'center',
-  },
-  questionContainer: {
-    flex: 1,
-    padding: 20,
-  },
-  rocketBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: '#fff',
-    borderRadius: 12,
-    padding: 15,
-    marginBottom: 20,
-  },
-  rocketName: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: '#005288',
-    marginLeft: 10,
-  },
-  questionText: {
+  pregunta: {
+    color: "white",
     fontSize: 22,
-    fontWeight: 'bold',
-    color: '#333',
-    marginBottom: 30,
-    textAlign: 'center',
-    lineHeight: 30,
+    fontWeight: "600",
+    marginBottom: 25,
   },
-  optionsContainer: {
-    marginBottom: 20,
-  },
-  optionButton: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    backgroundColor: '#fff',
-    borderRadius: 12,
-    padding: 18,
+  opcion: {
+    padding: 15,
+    backgroundColor: "#1C1C1E",
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: "#2A2A2A",
     marginBottom: 12,
-    borderWidth: 2,
-    borderColor: 'transparent',
   },
-  correctOption: {
-    backgroundColor: '#4CAF50',
-    borderColor: '#4CAF50',
-  },
-  wrongOption: {
-    backgroundColor: '#FF5722',
-    borderColor: '#FF5722',
-  },
-  optionText: {
+  opcionTexto: {
+    color: "#DADADA",
     fontSize: 16,
-    color: '#333',
-    flex: 1,
   },
-  optionTextSelected: {
-    color: '#fff',
-    fontWeight: 'bold',
+  correcta: {
+    backgroundColor: "#0A8F42",
+    borderColor: "#0A8F42",
   },
-  nextButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: '#005288',
-    borderRadius: 12,
-    padding: 18,
+  incorrecta: {
+    backgroundColor: "#8F0A0A",
+    borderColor: "#8F0A0A",
+  },
+  progreso: {
+    color: "#AAAAAA",
+    textAlign: "center",
     marginTop: 20,
   },
-  nextButtonText: {
-    color: '#fff',
-    fontSize: 18,
-    fontWeight: 'bold',
-    marginRight: 10,
-  },
-  resultContainer: {
+  center: {
     flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 20,
-    backgroundColor: '#f5f5f5',
+    justifyContent: "center",
+    alignItems: "center",
+    backgroundColor: "#0D0D0D",
   },
-  resultTitle: {
+  finTitulo: {
+    color: "#0A84FF",
     fontSize: 28,
-    fontWeight: 'bold',
-    color: '#333',
-    marginTop: 20,
-    marginBottom: 30,
+    fontWeight: "700",
   },
-  scoreBox: {
-    backgroundColor: '#005288',
-    borderRadius: 20,
-    padding: 30,
-    alignItems: 'center',
-    marginBottom: 30,
-    minWidth: 200,
-  },
-  finalScore: {
-    fontSize: 64,
-    fontWeight: 'bold',
-    color: '#fff',
-  },
-  scoreLabel: {
+  finTexto: {
+    color: "#FFFFFF",
     fontSize: 18,
-    color: '#fff',
-    marginTop: 5,
-  },
-  statsContainer: {
-    flexDirection: 'row',
-    justifyContent: 'space-around',
-    width: '100%',
-    marginBottom: 30,
-  },
-  statItem: {
-    alignItems: 'center',
-    backgroundColor: '#fff',
-    borderRadius: 12,
-    padding: 20,
-    flex: 1,
-    marginHorizontal: 5,
-  },
-  statValue: {
-    fontSize: 32,
-    fontWeight: 'bold',
-    color: '#005288',
-  },
-  statLabel: {
-    fontSize: 14,
-    color: '#666',
-    marginTop: 5,
-  },
-  resultMessage: {
-    fontSize: 18,
-    color: '#666',
-    textAlign: 'center',
-    marginBottom: 30,
-    paddingHorizontal: 20,
-  },
-  playAgainButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#005288',
-    borderRadius: 12,
-    padding: 18,
-    width: '100%',
-    justifyContent: 'center',
-  },
-  playAgainText: {
-    color: '#fff',
-    fontSize: 18,
-    fontWeight: 'bold',
-    marginLeft: 10,
+    marginTop: 15,
   },
 });
