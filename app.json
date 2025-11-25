@@ -11,6 +11,16 @@
     "android": {
       "package": "com.nicolasalarcon.tronosnext"
     },
-    "assetBundlePatterns": ["**/*"]
+    "assetBundlePatterns": [
+      "**/*"
+    ],
+    "ios": {
+      "bundleIdentifier": "com.nicolasalarcon.tronosnext"
+    },
+    "extra": {
+      "eas": {
+        "projectId": "c4b69203-9b91-4e14-b247-0c9868bb5b46"
+      }
+    }
   }
 }
