@@ -5,16 +5,12 @@
     "version": "1.0.0",
     "orientation": "portrait",
     "userInterfaceStyle": "light",
-    "assetBundlePatterns": [
-      "**/*"
-    ],
+    "splash": {
+      "backgroundColor": "#000000"
+    },
     "android": {
       "package": "com.nicolasalarcon.tronosnext"
     },
-    "extra": {
-      "eas": {
-        "projectId": "c4b69203-9b91-4e14-b247-0c9868bb5b46"
-      }
-    }
+    "assetBundlePatterns": ["**/*"]
   }
 }
